@@ -18,7 +18,7 @@ import torch
 import torch.optim as optim
 from data_load import load_train_data
 import time
-import cPickle as pickle
+import pickle
 from tensorboardX import SummaryWriter
 
 
@@ -77,7 +77,8 @@ def train():
                 print('batch loading used time %f, model forward used time %f' % (toc - tic, toc_r - tic_r))
             if current_batches % 100 == 0:
                 writer.export_scalars_to_json(hp.model_dir + '/all_scalars.json')
-        with open(hp.model_dir + '/history.pkl', 'w') as out_file:
+
+        with open(hp.model_dir + '/history.pkl', 'wb') as out_file:
             pickle.dump(history, out_file)
         checkpoint_path = hp.model_dir + '/model_epoch_%02d' % epoch + '.pth'
         torch.save(model.state_dict(), checkpoint_path)
