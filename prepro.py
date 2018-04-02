@@ -13,6 +13,7 @@ import os
 import regex
 from collections import Counter
 
+
 def make_vocab(fpath, fname):
     '''Constructs vocabulary.
     

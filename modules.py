@@ -19,6 +19,7 @@ class embedding(nn.Module):
 
     def __init__(self, vocab_size, num_units, zeros_pad=True, scale=True):
         '''Embeds a given Variable.
+        (自己实现了一个Embedding)
         Args:
           vocab_size: An int. Vocabulary size.
           num_units: An int. Number of embedding hidden units.
@@ -31,7 +32,9 @@ class embedding(nn.Module):
         self.num_units = num_units
         self.zeros_pad = zeros_pad
         self.scale = scale
+
         self.lookup_table = Parameter(torch.Tensor(vocab_size, num_units))
+        # use xavier_normal to initial lookup_table
         nn.init.xavier_normal(self.lookup_table.data)
         if self.zeros_pad:
             self.lookup_table.data[0, :].fill_(0)
@@ -41,8 +44,10 @@ class embedding(nn.Module):
             self.padding_idx = 0
         else:
             self.padding_idx = -1
+
+        # copied from torch.nn.modules.sparse.py
         outputs = self._backend.Embedding.apply(
-            inputs, self.lookup_table, self.padding_idx, None, 2, False, False)  # copied from torch.nn.modules.sparse.py
+            inputs, self.lookup_table, self.padding_idx, None, 2, False, False)
 
         if self.scale:
             outputs = outputs * (self.num_units ** 0.5)
@@ -60,7 +65,7 @@ class layer_normalization(nn.Module):
         '''
         super(layer_normalization, self).__init__()
         self.epsilon = epsilon
-        self.gamma = nn.Parameter(torch.ones(features))
+        self.gamma = nn.Parameter(torch.ones(features))  # 作为可学习的参数?
         self.beta = nn.Parameter(torch.zeros(features))
 
     def forward(self, x):
@@ -89,7 +94,7 @@ class positional_encoding(nn.Module):
         N, T = inputs.size()[0: 2]
 
         # First part of the PE function: sin and cos argument
-        position_ind = Variable(torch.unsqueeze(torch.arange(0, T), 0).repeat(N, 1).long())
+        position_ind = Variable(torch.unsqueeze(torch.arange(0, T), 0).repeat(N, 1).long())  # (N, T)
         position_enc = torch.Tensor([
             [pos / np.power(10000, 2. * i / self.num_units) for i in range(self.num_units)]
             for pos in range(T)])
@@ -102,8 +107,9 @@ class positional_encoding(nn.Module):
         lookup_table = Variable(position_enc)
 
         if self.zeros_pad:
+            # set the first row constant zero
             lookup_table = torch.cat((Variable(torch.zeros(1, self.num_units)),
-                                     lookup_table[1:, :]), 0)
+                                     lookup_table[1:, :]), dim=0)
             padding_idx = 0
         else:
             padding_idx = -1
@@ -142,18 +148,25 @@ class multihead_attention(nn.Module):
         self.normalization = layer_normalization(self.num_units)
 
     def forward(self, queries, keys, values):
-        # keys, values: same shape of [N, T_k, C_k]
-        # queries: A 3d Variable with shape of [N, T_q, C_q]
-
+        """Multi-Head Attention.
+         这里是先将Q K V分割为h部分，然后并行计算Scaled Dot-Product Attention,
+         最后将结果concat得到Multi-Head Attention的结果. 另外使用了參差连接和Norm.
+        :param queries: A 3d Variable with shape of [N, T_q, C_q]
+        :param keys: [N, T_k, C_k]
+        :param values: [N, T_k, C_k], the same with keys
+        :return:
+        """
+        # here we set C_k = C_q = C
         # Linear projections
         Q = self.Q_proj(queries)  # (N, T_q, C)
-        K = self.K_proj(keys)  # (N, T_q, C)
-        V = self.V_proj(values)  # (N, T_q, C)
+        K = self.K_proj(keys)  # (N, T_k, C)
+        V = self.V_proj(values)  # (N, T_k, C)
 
+        # 先将Q K V split成self.num_heads个, 再concat,然后并行的计算Attention
         # Split and concat
         Q_ = torch.cat(torch.chunk(Q, self.num_heads, dim=2), dim=0)  # (h*N, T_q, C/h)
-        K_ = torch.cat(torch.chunk(K, self.num_heads, dim=2), dim=0)  # (h*N, T_q, C/h)
-        V_ = torch.cat(torch.chunk(V, self.num_heads, dim=2), dim=0)  # (h*N, T_q, C/h)
+        K_ = torch.cat(torch.chunk(K, self.num_heads, dim=2), dim=0)  # (h*N, T_k, C/h)
+        V_ = torch.cat(torch.chunk(V, self.num_heads, dim=2), dim=0)  # (h*N, T_k, C/h)
 
         # Multiplication
         outputs = torch.bmm(Q_, K_.permute(0, 2, 1))  # (h*N, T_q, T_k)
@@ -193,7 +206,7 @@ class multihead_attention(nn.Module):
         # Dropouts
         outputs = self.output_dropout(outputs)  # (h*N, T_q, T_k)
 
-        # Weighted sum
+        # Weighted sum get attention value
         outputs = torch.bmm(outputs, V_)  # (h*N, T_q, C/h)
 
         # Restore shape
@@ -272,7 +285,7 @@ class label_smoothing(nn.Module):
 if __name__ == '__main__':
     num_units = 512
     inputs = Variable(torch.randn((100, 10)))
-    outputs = position_encoding(num_units)(inputs)
+    outputs = positional_encoding(num_units)(inputs)
     outputs = multihead_attention(num_units)(outputs, outputs, outputs)
     outputs = feedforward(num_units)(outputs)
 
