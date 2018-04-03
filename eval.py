@@ -50,7 +50,6 @@ def eval():
             preds_t = torch.LongTensor(np.zeros((hp.batch_size, hp.maxlen), np.int32)).cuda()
             preds = Variable(preds_t)
             for j in range(hp.maxlen):
-
                 _, _preds, _ = model(x_, preds)
                 preds_t[:, j] = _preds.data[:, j]
                 preds = Variable(preds_t.long())

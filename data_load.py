@@ -19,17 +19,21 @@ try:
 except NameError:
     xrange = range  # Python 3
 
+
 def load_de_vocab():
     vocab = [line.split()[0] for line in codecs.open('preprocessed/de.vocab.tsv', 'r', 'utf-8').read().splitlines() if int(line.split()[1])>=hp.min_cnt]
     word2idx = {word: idx for idx, word in enumerate(vocab)}
     idx2word = {idx: word for idx, word in enumerate(vocab)}
     return word2idx, idx2word
 
+
 def load_en_vocab():
+    """set the en vocab"""
     vocab = [line.split()[0] for line in codecs.open('preprocessed/en.vocab.tsv', 'r', 'utf-8').read().splitlines() if int(line.split()[1])>=hp.min_cnt]
     word2idx = {word: idx for idx, word in enumerate(vocab)}
     idx2word = {idx: word for idx, word in enumerate(vocab)}
     return word2idx, idx2word
+
 
 def create_data(source_sents, target_sents): 
     de2idx, idx2de = load_de_vocab()
@@ -55,13 +59,20 @@ def create_data(source_sents, target_sents):
     
     return X, Y, Sources, Targets
 
+
 def load_train_data():
+    """load train data
+    :return:
+     'X': sentence list, a list of list, every word was replaced with index
+     'Y': sentence list, a list of list, every word was replaced with index
+    """
     de_sents = [regex.sub("[^\s\p{Latin}']", "", line) for line in codecs.open(hp.source_train, 'r', 'utf-8').read().split("\n") if line and line[0] != "<"]
     en_sents = [regex.sub("[^\s\p{Latin}']", "", line) for line in codecs.open(hp.target_train, 'r', 'utf-8').read().split("\n") if line and line[0] != "<"]
     
     X, Y, Sources, Targets = create_data(de_sents, en_sents)
     return X, Y
-    
+
+
 def load_test_data():
     def _refine(line):
         line = regex.sub("<[^>]+>", "", line)
@@ -76,6 +87,11 @@ def load_test_data():
 
 
 def get_batch_indices(total_length, batch_size):
+    """get a batch indexes
+    :param total_length:
+    :param batch_size:
+    :return:
+    """
     current_index = 0
     indexs = [i for i in xrange(total_length)]
     random.shuffle(indexs)
@@ -84,5 +100,10 @@ def get_batch_indices(total_length, batch_size):
             break
         current_index += batch_size
         yield indexs[current_index: current_index + batch_size], current_index
+
+
+if __name__ == "__main__":
+    X, Y = load_train_data()
+    word2idx, idx2word = load_en_vocab()
 
 

@@ -32,14 +32,17 @@ class AttModel(nn.Module):
 
         # encoder
         self.enc_emb = embedding(self.enc_voc, self.hp.hidden_units, scale=True)
-
+        # if use sinusoid to calc position encoding
         if self.hp.sinusoid:
             self.enc_positional_encoding = positional_encoding(num_units=self.hp.hidden_units,
                                                                zeros_pad=False,
                                                                scale=False)
         else:
             self.enc_positional_encoding = embedding(self.hp.maxlen, self.hp.hidden_units, zeros_pad=False, scale=False)
+
         self.enc_dropout = nn.Dropout(self.hp.dropout_rate)
+
+        # number of encoder blocks(a stack of identical layers)
         for i in range(self.hp.num_blocks):
             self.__setattr__('enc_self_attention_%d' % i, multihead_attention(num_units=self.hp.hidden_units,
                                                                               num_heads=self.hp.num_heads,
@@ -78,8 +81,14 @@ class AttModel(nn.Module):
         # self.losslayer = nn.CrossEntropyLoss(reduce=False)
 
     def forward(self, x, y):
+        """
+        :param x: batch sentence list, a list of list, [N, S]
+        :param y: batch sentence list, a list of list, [N, S]
+        :return:
+        """
         # define decoder inputs
-        self.decoder_inputs = torch.cat([Variable(torch.ones(y[:, :1].size()).cuda() * 2).long(), y[:, :-1]], dim=-1)  # 2:<S>
+        # 2:<S>
+        self.decoder_inputs = torch.cat([Variable(torch.ones(y[:, :1].size()).cuda() * 2).long(), y[:, :-1]], dim=-1)
 
         # Encoder
         self.enc = self.enc_emb(x)
@@ -90,11 +99,13 @@ class AttModel(nn.Module):
             self.enc += self.enc_positional_encoding(
                 Variable(torch.unsqueeze(torch.arange(0, x.size()[1]), 0).repeat(x.size(0), 1).long().cuda()))
         self.enc = self.enc_dropout(self.enc)
+
         # Blocks
         for i in range(self.hp.num_blocks):
             self.enc = self.__getattr__('enc_self_attention_%d' % i)(self.enc, self.enc, self.enc)
             # Feed Forward
             self.enc = self.__getattr__('enc_feed_forward_%d' % i)(self.enc)
+
         # Decoder
         self.dec = self.dec_emb(self.decoder_inputs)
         # Positional Encoding
@@ -118,8 +129,10 @@ class AttModel(nn.Module):
         # Final linear projection
         self.logits = self.logits_layer(self.dec)
         self.probs = F.softmax(self.logits, dim=-1).view(-1, self.dec_voc)
+
+        # use max logits index to predict
         _, self.preds = torch.max(self.logits, -1)
-        self.istarget = (1. - y.eq(0.).float()).view(-1)
+        self.istarget = (1. - y.eq(0.).float()).view(-1)  # ?
         self.acc = torch.sum(self.preds.eq(y).float().view(-1) * self.istarget) / torch.sum(self.istarget)
 
         # Loss

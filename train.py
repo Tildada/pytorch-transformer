@@ -28,7 +28,9 @@ def train():
     en2idx, idx2en = load_en_vocab()
     enc_voc = len(de2idx)
     dec_voc = len(en2idx)
+
     writer = SummaryWriter()
+
     # Load data
     X, Y = load_train_data()
     # calc total batch count
@@ -37,8 +39,10 @@ def train():
     model.train()
     model.cuda()
     torch.backends.cudnn.benchmark = True
+    # save model dir
     if not os.path.exists(hp.model_dir):
         os.makedirs(hp.model_dir)
+    # if preload model
     if hp.preload is not None and os.path.exists(hp.model_dir + '/history.pkl'):
         with open(hp.model_dir + '/history.pkl') as in_file:
             history = pickle.load(in_file)
@@ -52,23 +56,28 @@ def train():
         model.load_state_dict(torch.load(hp.model_dir + '/model_epoch_%02d.pth' % hp.preload))
 
     startepoch = int(hp.preload) if hp.preload is not None else 1
+    # begin training
     for epoch in range(startepoch, hp.num_epochs + 1):
         current_batch = 0
         for index, current_index in get_batch_indices(len(X), hp.batch_size):
             tic = time.time()
             x_batch = Variable(torch.LongTensor(X[index]).cuda())
             y_batch = Variable(torch.LongTensor(Y[index]).cuda())
+            # count time
             toc = time.time()
             tic_r = time.time()
+
             torch.cuda.synchronize()
             optimizer.zero_grad()
             loss, _, acc = model(x_batch, y_batch)
             loss.backward()
             optimizer.step()
             torch.cuda.synchronize()
+
             toc_r = time.time()
             current_batches += 1
             current_batch += 1
+            # every 10 batches record a loss and acc
             if current_batches % 10 == 0:
                 writer.add_scalar('./loss', loss.data.cpu().numpy()[0], current_batches)
                 writer.add_scalar('./acc', acc.data.cpu().numpy()[0], current_batches)
@@ -77,9 +86,10 @@ def train():
                 print('batch loading used time %f, model forward used time %f' % (toc - tic, toc_r - tic_r))
             if current_batches % 100 == 0:
                 writer.export_scalars_to_json(hp.model_dir + '/all_scalars.json')
-
+        # ???
         with open(hp.model_dir + '/history.pkl', 'wb') as out_file:
             pickle.dump(history, out_file)
+            # save model parameters and optimizer parameters
         checkpoint_path = hp.model_dir + '/model_epoch_%02d' % epoch + '.pth'
         torch.save(model.state_dict(), checkpoint_path)
         torch.save(optimizer.state_dict(), hp.model_dir + '/optimizer.pth')
